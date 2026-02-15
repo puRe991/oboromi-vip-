@@ -9,7 +9,7 @@
 <h4 align="center">(◕‿◕)&nbsp;&nbsp;Join our Discord here 🢰</h4>
 
 <h1 align="center">oboromi</h1>
-<h4 align="center">a WIP NX2 emulator foundation written in Rust</h4>
+<h4 align="center">a WIP ounce emulator foundation written in Rust</h4>
 
 oboromi is a WIP emulator for the Nintendo Switch 2.
 
