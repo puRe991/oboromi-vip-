@@ -59,18 +59,16 @@ fn parse_param_list(tokens: &[&str], is_input: bool) -> (Vec<String>, Option<usi
             return (v, Some(i + 1));
         }
         let arg = tokens[i].split(&[',', ')', ';', '(']).collect::<Vec<_>>();
-        if let Some(&first) = arg.first() {
-            if !first.is_empty() {
-                if first.starts_with("buffer") {
-                    if i + 2 < tokens.len() {
-                        let joined = format!("{},{},{}", tokens[i], tokens[i + 1], tokens[i + 2]);
-                        let cleaned: String = joined.split(&[',', ')', ';']).collect();
-                        v.push(cleaned);
-                        i += 2;
-                    }
-                } else {
-                    v.push(first.to_string());
+        if let Some(&first) = arg.first().filter(|first| !first.is_empty()) {
+            if first.starts_with("buffer") {
+                if i + 2 < tokens.len() {
+                    let joined = format!("{},{},{}", tokens[i], tokens[i + 1], tokens[i + 2]);
+                    let cleaned: String = joined.split(&[',', ')', ';']).collect();
+                    v.push(cleaned);
+                    i += 2;
                 }
+            } else {
+                v.push(first.to_string());
             }
         }
         i += 1;

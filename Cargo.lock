@@ -2470,6 +2470,7 @@ dependencies = [
  "libc",
  "log",
  "memmap2",
+ "thiserror 2.0.17",
  "unicorn-engine",
 ]
 

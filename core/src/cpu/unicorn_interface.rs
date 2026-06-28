@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use unicorn_engine::{Arch, Mode, Prot, RegisterARM64, Unicorn};
+use unicorn_engine::{Arch, Mode, Prot, RegisterARM64, Unicorn, uc_error};
 
 /// Safe wrapper for Unicorn CPU emulator
 pub struct UnicornCPU {
@@ -36,14 +36,21 @@ impl UnicornCPU {
     }
 
     /// Create a new Unicorn instance with shared memory
-    /// 
+    ///
     /// # Safety
     /// The caller must ensure `memory_ptr` is valid for the lifetime of this CPU
     /// and has at least `memory_size` bytes.
-    pub unsafe fn new_with_shared_mem(core_id: u32, memory_ptr: *mut u8, memory_size: u64) -> Option<Self> {
+    pub unsafe fn new_with_shared_mem(
+        core_id: u32,
+        memory_ptr: *mut u8,
+        memory_size: u64,
+    ) -> Option<Self> {
         let mut emu = Unicorn::new(Arch::ARM64, Mode::LITTLE_ENDIAN)
             .map_err(|e| {
-                eprintln!("Failed to create Unicorn instance for core {}: {:?}", core_id, e);
+                eprintln!(
+                    "Failed to create Unicorn instance for core {}: {:?}",
+                    core_id, e
+                );
                 e
             })
             .ok()?;
@@ -51,12 +58,17 @@ impl UnicornCPU {
         // Map shared memory
         // unsafe because we are providing a raw pointer
         unsafe {
-            emu.mem_map_ptr(0x0, memory_size, Prot::ALL, memory_ptr as *mut std::ffi::c_void)
-                .map_err(|e| {
-                    eprintln!("Failed to map shared memory for core {}: {:?}", core_id, e);
-                    e
-                })
-                .ok()?;
+            emu.mem_map_ptr(
+                0x0,
+                memory_size,
+                Prot::ALL,
+                memory_ptr as *mut std::ffi::c_void,
+            )
+            .map_err(|e| {
+                eprintln!("Failed to map shared memory for core {}: {:?}", core_id, e);
+                e
+            })
+            .ok()?;
         }
 
         // Initialize stack pointer to end of memory, offset by core ID to avoid collision
@@ -86,6 +98,24 @@ impl UnicornCPU {
                     eprintln!("Emulation error: {e:?}");
                     0 // Failure - actual emulation error
                 }
+            }
+        }
+    }
+
+    /// Execute a deterministic maximum number of AArch64 instructions.
+    pub fn run_for_instructions(&self, instruction_count: usize) -> u64 {
+        if instruction_count == 0 {
+            return 1;
+        }
+
+        let mut emu = self.emu.lock().unwrap();
+        let pc = emu.reg_read(RegisterARM64::PC).unwrap_or(0);
+        match emu.emu_start(pc, 0xFFFF_FFFF_FFFF_FFFF, 0, instruction_count) {
+            Ok(_) => 1,
+            Err(e) if format!("{e:?}").contains("EXCEPTION") => 1,
+            Err(e) => {
+                eprintln!("Deterministic emulation error: {e:?}");
+                0
             }
         }
     }
@@ -221,11 +251,16 @@ impl UnicornCPU {
         let _ = emu.reg_write(RegisterARM64::PC, value);
     }
 
+    /// Write bytes to emulated memory.
+    pub fn write_bytes(&self, vaddr: u64, bytes: &[u8]) -> Result<(), uc_error> {
+        let mut emu = self.emu.lock().unwrap();
+        emu.mem_write(vaddr, bytes)
+    }
+
     /// Write a 32-bit value to emulated memory
     pub fn write_u32(&self, vaddr: u64, value: u32) {
-        let mut emu = self.emu.lock().unwrap();
         let bytes = value.to_le_bytes();
-        let _ = emu.mem_write(vaddr, &bytes);
+        let _ = self.write_bytes(vaddr, &bytes);
     }
 
     /// Read a 32-bit value from emulated memory
@@ -241,9 +276,8 @@ impl UnicornCPU {
 
     /// Write a 64-bit value to emulated memory
     pub fn write_u64(&self, vaddr: u64, value: u64) {
-        let mut emu = self.emu.lock().unwrap();
         let bytes = value.to_le_bytes();
-        let _ = emu.mem_write(vaddr, &bytes);
+        let _ = self.write_bytes(vaddr, &bytes);
     }
 
     /// Read a 64-bit value from emulated memory
