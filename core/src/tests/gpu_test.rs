@@ -66,7 +66,11 @@ mod inst {
 
 fn run_translation_test(name: &str, instructions: &[u128]) -> TestResult {
     let start = Instant::now();
-    println!("Running test: {} ({} instructions)", name, instructions.len());
+    println!(
+        "Running test: {} ({} instructions)",
+        name,
+        instructions.len()
+    );
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut emitter = Emitter::new();
         emitter.emit_header();
@@ -136,10 +140,7 @@ pub fn run_gpu_tests() -> Vec<String> {
     let mut passed = 0;
     for t in &tests {
         let icon = if t.passed { "Y" } else { "N" };
-        let line = format!(
-            "{} {} - {} ({:?})",
-            icon, t.name, t.message, t.duration
-        );
+        let line = format!("{} {} - {} ({:?})", icon, t.name, t.message, t.duration);
         println!("{}", line);
         results.push(line);
         if t.passed {
@@ -160,4 +161,34 @@ pub fn run_gpu_tests() -> Vec<String> {
     results.push(summary);
 
     results
+}
+
+#[cfg(test)]
+mod isolated_translation_tests {
+    use super::inst;
+    use crate::gpu::sm86::Decoder;
+    use crate::gpu::spirv::{Emitter, capability};
+
+    #[test]
+    fn isolated_iadd_shader_translation_emits_valid_spirv_container() {
+        let mut emitter = Emitter::new();
+        emitter.emit_header();
+        emitter.emit_capability(capability::SHADER);
+        emitter.emit_memory_model(0, 1);
+
+        let mut decoder = Decoder::new(&mut emitter);
+        decoder.init();
+        let void_ty = decoder.get_type_void();
+        let func_ty = decoder.ir.emit_type_function(void_ty, &[]);
+        decoder.ir.emit_function(void_ty, 0, func_ty);
+        decoder.ir.emit_label();
+        decoder.translate(inst::iadd32i(1, 2, 100));
+        decoder.ir.emit_return();
+        decoder.ir.emit_function_end();
+        decoder.ir.finalize();
+        decoder.ir.validate();
+
+        assert!(decoder.ir.len() > 5);
+        assert_eq!(decoder.ir.words()[0], 0x07230203);
+    }
 }
